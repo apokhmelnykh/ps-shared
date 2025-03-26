@@ -85,7 +85,7 @@ foreach ($dir in $dirCollected) {
             Write-Output "- group already exist: $groupName"
         } else {
             $groupsFromACL += $groupName
-            Write-Output "+ group added: $groupName"
+            Write-Output "+ group added for migration: $groupName"
         }
     }
 }
@@ -99,9 +99,24 @@ foreach ($group in $groupsFromACL) {
     $group = ($group.Split('\'))[1]
     # Запрос к AD
     $groupAD = Get-ADGroup -Filter {Name -eq $group} -Properties Description
-    # Супер популярный прием, чтобы не городить селекты и фильтры просто создадим свой объект с нужными нам свойствами. Очень часто используется.
+    
+    # Переименовываем группы
+    $groupADName = $groupAD.Name
+    if ($groupADName -match '_RW$') {
+        $groupNewName = $groupADName -replace '^(.*)(_RW$)', '$1_W'
+    }
+    elseif ($groupADName -match '_LIST$') {
+        $groupNewName = $groupADName -replace '^(.*)(_LIST$)', '$1_L'
+    }
+    else {
+        # Если ни один из шаблонов не совпал, оставляем имя без изменений
+        $groupNewName = $groupADName
+    }
+
+    # Супер популярный прием, чтобы не городить селекты и фильтры просто создадим свой объект с нужными нам свойствами.
+    # Очень часто используется.
     $groupInfo = [PSCustomObject]@{
-        GroupName   = $groupAD.Name
+        GroupName   = $groupNewName
         Description = $groupAD.Description
     }
     # Сохраним информацию о группе полученную из AD
@@ -141,5 +156,5 @@ if ($migrateGroups) {
 # block3 выполнится если задали ключ updateACL
 if ($updateACL) {
     Write-Host -BackgroundColor DarkGreen "Block3. Update directory ACL."
-    Update-DirectoryPermissions -DirectoryPath $dirRootPath -SrcDomain $srcDomain -DstDomain $dstDomain
+    Update-DirectoryPermissions -DirectoryPath $dirRootPath -DirectoryDepth $dirScanLevel -SrcDomain $srcDomain -DstDomain $dstDomain
 }

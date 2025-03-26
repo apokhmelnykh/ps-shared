@@ -3,22 +3,36 @@ function Update-DirectoryPermissions {
         [Parameter(Mandatory = $true)]
         [string]$DirectoryPath,
 
+        [Parameter(Mandatory=$true)]
+        [int]$DirectoryDepth, # Глубина сканирования
+
         [Parameter(Mandatory = $true)]
         [string]$SrcDomain,
-                
+
         [Parameter(Mandatory = $true)]
         [string]$DstDomain
     )
 
     # Проверяем наличие директории
     if (-not (Test-Path -Path $DirectoryPath)) {
-        Write-Error "- Folder '$DirectoryPath' not exist."
+        Write-Error "- folder '$DirectoryPath' not exist."
+        return
+    }
+
+    # Проверяем наличие глубины сканирования
+    if ($DirectoryDepth -is [int]) {
+        if ($DirectoryDepth -lt 1) {
+            Write-Error "- parameter DirectoryDepth less then 1."
+            return
+        }
+    } else {
+        Write-Error "- parameter DirectoryDepth not an integer."
         return
     }
 
     # Получаем корневую директорию и все поддиректории
     $directories = @(Get-Item -Path $DirectoryPath)
-    $directories += @(Get-ChildItem -Path $DirectoryPath -Recurse -Directory)
+    $directories += @(Get-ChildItem -Path $DirectoryPath -Recurse -Directory -Depth $DirectoryDepth)
 
     # Обходим директории
     foreach ($dir in $directories) {
@@ -36,6 +50,12 @@ function Update-DirectoryPermissions {
                     # нет смысла ходить в целевой домен и проверять наличие там этого объекта
                     # если объект есть, то он добавится в ACL
                     # если объекта нет, то ACL не будет изменен
+                    if ($groupName -match '_RW$') {
+                        $groupName = $groupName -replace '^(.*)(_RW$)', '$1_W'
+                    }
+                    elseif ($groupName -match '_LIST$') {
+                        $groupName = $groupName -replace '^(.*)(_LIST$)', '$1_L'
+                    }
                     $newGroupName = "$DstDomain\$groupName"
                     # Создаем новую ACE с теми же правами, но для нового домена
                     $newAce = New-Object System.Security.AccessControl.FileSystemAccessRule(
@@ -52,6 +72,6 @@ function Update-DirectoryPermissions {
         }
         # Применяем измененный ACL к директории
         Set-Acl -Path $dir.FullName -AclObject $acl
-        Write-Host "+ Directory Permissions updated: $($dir.FullName)"
+        Write-Host "+ directory permissions updated: $($dir.FullName)"
     }
 }
